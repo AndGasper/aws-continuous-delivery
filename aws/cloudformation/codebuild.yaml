@@ -1,0 +1,137 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CodeBuild template for a project
+
+Parameters:
+  CodeBuildCacheBucketName:
+    Type: String
+    Description: The name of the bucket hosting cached resources
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      -
+        Label:
+          default: "CodeBuild Cache Bucket Name"
+        Parameters:
+          - CodeBuildCacheBucketName
+    ParameterLabels:
+      CodeBuildCacheBucketName:
+        default: "CodeBuild Cache Bucket Name"
+
+  
+
+Resources:
+  # CodeBuild cache bucket
+  CodeBuildCacheBucketName:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Description: Creating Amazomn S3 bucket for codebuild caching
+    Properties:
+      AccessControl: PublicRead
+      BucketName: !Ref CodeBuildCacheBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+        
+      Tags:
+        - Key: Name
+          Value: !Join
+          - '-'
+          - - !Ref 'AWS::StackName'
+            - CodeBuildCacheBucketName
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: 30
+            Status: Enabled
+  CodeBuildCacheBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      PolicyDocument:
+        Id: CodeBuildCacheBucketPolicy
+        Version: 2012-10-17
+        Statement:
+          - Sid:   
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Description: "CodeBuildProject "
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/ubuntu-base:14.04
+        EnvironmentVariables:
+          - Name: varName1
+            Value: varValue1
+          - Name: varName2
+            Value: varValue2
+            Type: PLAINTEXT
+          - Name: varName3
+            Value: /CodeBuild/testParameter
+            Type: PARAMETER_STORE
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 10
+      VpcConfig:
+        VpcId: !Ref CodeBuildVPC
+        Subnets: [!Ref CodeBuildSubnet]
+        SecurityGroupIds: [!Ref CodeBuildSecurityGroup]
+      Cache:
+        Type: S3
+        Location: mybucket/prefix
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: ['sts:AssumeRole']
+          Effect: Allow
+          Principal:
+            Service: [codebuild.amazonaws.com]
+        Version: '2012-10-17'
+      Path: /
+      Policies:
+        - PolicyName: CodeBuildAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                - 'logs:*'
+                - 'ec2:CreateNetworkInterface'
+                - 'ec2:DescribeNetworkInterfaces'
+                - 'ec2:DeleteNetworkInterface'
+                - 'ec2:DescribeSubnets'
+                - 'ec2:DescribeSecurityGroups'
+                - 'ec2:DescribeDhcpOptions'
+                - 'ec2:DescribeVpcs'
+                - 'ec2:CreateNetworkInterfacePermission'
+                Effect: Allow
+                Resource: '*'
+  CodeBuildVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+        - Key: name
+          Value: codebuild
+  CodeBuildSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CodeBuildVPC
+      CidrBlock: 10.0.1.0/24
+  CodeBuildSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Codebuild Internet Group
+      GroupDescription: 'CodeBuild SecurityGroup'
+      VpcId: !Ref CodeBuildVPC

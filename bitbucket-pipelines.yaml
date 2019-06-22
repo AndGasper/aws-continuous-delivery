@@ -1,0 +1,18 @@
+image: python:3.5.1
+
+pipelines:
+  branches: 
+    master:
+      - step:
+        script:
+          - pip install boto3===1.3.0
+          # Grab the latest published tag
+          - export TAG=`git describe --abbrev=0 --tags`
+          # invoke the ecs deploy python script
+          # first argument is a template task definition
+          # second argument is the docker image we want to deploy composed of our environment variables
+          # third argument is the minimum number of health containers that should be running on the cluster
+            # zero = 1 host
+          # fourth argument is the minimum number of healthy containers that should be running on the cluster
+          # fifth argument is the maximum number of healthy containers that should be running on the cluster
+          - python ecs_deploy.py task_definition.json $DOCKER_IMAGE:$TAG 1 0 200
