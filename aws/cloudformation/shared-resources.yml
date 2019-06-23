@@ -1,2 +1,1 @@
-Description:
-  This template sets up resources that can be shared across multiple stacks of the CodeBuild
+Description: This template defines shared resources 

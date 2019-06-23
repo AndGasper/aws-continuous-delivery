@@ -11,6 +11,7 @@
         "!Ref",
         "!Sub",
         "!GetAtt",
+        "!GetAtt sequence",
         "!GetAZs",
         "!ImportValue",
         "!Select",
