@@ -11,7 +11,6 @@
         "!Ref",
         "!Sub",
         "!GetAtt",
-        "!GetAtt sequence",
         "!GetAZs",
         "!ImportValue",
         "!Select",
@@ -19,4 +18,5 @@
         "!Split",
         "!Join sequence"
     ],
+    "yaml.format.enable": true
 }
