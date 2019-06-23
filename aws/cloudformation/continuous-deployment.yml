@@ -51,38 +51,38 @@ Resources:
       Policies:
       - PolicyDocument:
           Statement:
-          - Action:
-            - iam:CreateRole
-            - iam:AttachRolePolicy
-            - iam:PutRolePolicy
-            - iam:PassRole
-            - iam:DetachRolePolicy
-            - iam:ListRolePolicies
-            - iam:GetRole
-            - iam:DeleteRolePolicy
-            - iam:UpdateRoleDescription
-            - iam:ListRoles
-            - iam:DeleteRole
-            - iam:GetRolePolicy
-            - iam:CreateInstanceProfile
-            - iam:AddRoleToInstanceProfile
-            - iam:DeleteInstanceProfile
-            - iam:GetInstanceProfile
-            - iam:ListInstanceProfiles
-            - iam:ListInstanceProfilesForRole
-            - iam:RemoveRoleFromInstanceProfile
-            Effect: Allow
-            Resource:
-            - !Sub "arn:aws:iam::*:role/${AWS::StackName}*"
-            - !Sub "arn:aws:iam::*:instance-profile/${AWS::StackName}*"
-          - Action:
-            - ssm:GetParameters
-            - autoscaling:*
-            - ec2:*
-            - codedeploy:*
-            - elasticloadbalancing:*
-            Effect: Allow
-            Resource: '*'
+            - Action:
+                - iam:CreateRole
+                - iam:AttachRolePolicy
+                - iam:PutRolePolicy
+                - iam:PassRole
+                - iam:DetachRolePolicy
+                - iam:ListRolePolicies
+                - iam:GetRole
+                - iam:DeleteRolePolicy
+                - iam:UpdateRoleDescription
+                - iam:ListRoles
+                - iam:DeleteRole
+                - iam:GetRolePolicy
+                - iam:CreateInstanceProfile
+                - iam:AddRoleToInstanceProfile
+                - iam:DeleteInstanceProfile
+                - iam:GetInstanceProfile
+                - iam:ListInstanceProfiles
+                - iam:ListInstanceProfilesForRole
+                - iam:RemoveRoleFromInstanceProfile
+              Effect: Allow
+              Resource:
+                - !Sub "arn:aws:iam::*:role/${AWS::StackName}*"
+                - !Sub "arn:aws:iam::*:instance-profile/${AWS::StackName}*"
+            - Action:
+                - ssm:GetParameters
+                - autoscaling:*
+                - ec2:*
+                - codedeploy:*
+                - elasticloadbalancing:*
+              Effect: Allow
+              Resource: '*'
         PolicyName: !Join
           - '-'
           -  - !Ref 'AWS::StackName'
@@ -685,102 +685,111 @@ Resources:
       Tags:
         -
           Key: "artifacts-bucket"
-          Value: !Join
-            - '-'
-            - - !Ref 'AWS::StackName'
-              - ArtifactsBucket     
+          Value: !Join [ '-', [ !Ref "AWS::StackName", ArtifactsBucket ] ] 
 
     # Delete the cache bucket if the stack is deleted
+  # CacheBucket:
+  #   DeletionPolicy: Delete
+  #   Description: Creating Amazon S3 bucket for CodeBuild caching
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     Tags:
+  #       - 
+  #         Key: Name
+  #         Value: !Join [ '-', [ !Ref "AWS::StackName", "CacheBucket" ] ]
+  #     # Expire things out of the cache after 30 days
+  #     LifecycleConfiguration:
+  #       Rules:
+  #         - ExpirationInDays: 30
+  #           Status: Enabled
   CacheBucket:
     DeletionPolicy: Delete
-    Description: Creating Amazon S3 bucket for CodeBuild caching
+    Description: S3 Bucket for CodeBuild caching
     Type: AWS::S3::Bucket
     Properties:
-      Tags:
-      - Key: Name
-        Value: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - CacheBucket
       LifecycleConfiguration:
         Rules:
-          - ExpirationInDays: 30
+          - 
+            ExpirationInDays: 30
             Status: Enabled
-    
+      Tags:
+        - 
+          Key: Name
+          Value: !Join [ '-', [!Ref 'AWS::StackName', 'CacheBucket']]
 
-  SourceEvent:
-    Description: Rule for Amazon CloudWatch Events to detect changes to the source repository and trigger pipeline execution
-    Type: AWS::Events::Rule
-    Properties:
-      EventPattern:
-        detail:
-          event:
-          - referenceCreated
-          - referenceUpdated
-          referenceName:
-          - master
-          referenceType:
-          - branch
-        detail-type:
-        - CodeCommit Repository State Change
-        resources:
-        - !Join
-          - ':'
-          - - 'arn:aws:codecommit'
-            - !Ref 'AWS::Region'
-            - !Ref 'AWS::AccountId'
-            - !Ref 'CodeCommitRepoName'
-        source:
-        - aws.codecommit
-      Name: !Join
-      - '-'
-      - - !Ref 'AWS::StackName'
-        - SourceEvent
-      State: ENABLED
-      Targets:
-      - Arn: !Join
-        - ':'
-        - - arn
-          - aws
-          - codepipeline
-          - !Ref 'AWS::Region'
-          - !Ref 'AWS::AccountId'
-          - !Ref 'AWS::StackName'
-        Id: ProjectPipelineTarget
-        RoleArn: !GetAtt 'SourceEventRole.Arn'
+  # SourceEvent:
+  #   Description: Rule for Amazon CloudWatch Events to detect changes to the source repository and trigger pipeline execution
+  #   Type: AWS::Events::Rule
+  #   Properties:
+  #     EventPattern:
+  #       detail:
+  #         event:
+  #         - referenceCreated
+  #         - referenceUpdated
+  #         referenceName:
+  #         - master
+  #         referenceType:
+  #         - branch
+  #       detail-type:
+  #       - CodeCommit Repository State Change
+  #       resources:
+  #       - !Join
+  #         - ':'
+  #         - - 'arn:aws:codecommit'
+  #           - !Ref 'AWS::Region'
+  #           - !Ref 'AWS::AccountId'
+  #           - !Ref 'CodeCommitRepoName'
+  #       source:
+  #       - aws.codecommit
+  #     Name: !Join
+  #     - '-'
+  #     - - !Ref 'AWS::StackName'
+  #       - SourceEvent
+  #     State: ENABLED
+  #     Targets:
+  #     - Arn: !Join
+  #       - ':'
+  #       - - arn
+  #         - aws
+  #         - codepipeline
+  #         - !Ref 'AWS::Region'
+  #         - !Ref 'AWS::AccountId'
+  #         - !Ref 'AWS::StackName'
+  #       Id: ProjectPipelineTarget
+  #       RoleArn: !GetAtt 'SourceEventRole.Arn'
     
-  SourceEventRole:
-    Description: IAM role to allow Amazon CloudWatch Events to trigger AWS CodePipeline execution
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-        - Action: sts:AssumeRole
-          Effect: Allow
-          Principal:
-            Service:
-            - events.amazonaws.com
-          Sid: 1
-      Policies:
-      - PolicyDocument:
-          Statement:
-            - Action:
-                - codepipeline:StartPipelineExecution
-              Effect: Allow
-              Resource:
-                - !Join
-                  - ':'
-                  - - arn
-                    - aws
-                    - codepipeline
-                    - !Ref 'AWS::Region'
-                    - !Ref 'AWS::AccountId'
-                    - !Ref 'AWS::StackName'
-        PolicyName: !Join
-          - '-'
-          - - !Ref 'AWS::StackName'
-            - CloudWatchEventPolicy
-      RoleName: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - CloudWatchEventRule
+  # SourceEventRole:
+  #   Description: IAM role to allow Amazon CloudWatch Events to trigger AWS CodePipeline execution
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Statement:
+  #       - Action: sts:AssumeRole
+  #         Effect: Allow
+  #         Principal:
+  #           Service:
+  #           - events.amazonaws.com
+  #         Sid: 1
+  #     Policies:
+  #     - PolicyDocument:
+  #         Statement:
+  #           - Action:
+  #               - codepipeline:StartPipelineExecution
+  #             Effect: Allow
+  #             Resource:
+  #               - !Join
+  #                 - ':'
+  #                 - - arn
+  #                   - aws
+  #                   - codepipeline
+  #                   - !Ref 'AWS::Region'
+  #                   - !Ref 'AWS::AccountId'
+  #                   - !Ref 'AWS::StackName'
+  #       PolicyName: !Join
+  #         - '-'
+  #         - - !Ref 'AWS::StackName'
+  #           - CloudWatchEventPolicy
+  #     RoleName: !Join
+  #       - '-'
+  #       - - !Ref 'AWS::StackName'
+  #         - CloudWatchEventRule
