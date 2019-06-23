@@ -38,7 +38,6 @@ Outputs:
 Resources:
   CloudFormationTrustRole:
     Description: Creating service role in IAM for AWS CloudFormation
-    Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
         Statement:
@@ -91,7 +90,7 @@ Resources:
         - '-'
         -  - !Ref 'AWS::StackName'
            - CloudFormation
-    
+    Type: AWS::IAM::Role
 
   CodeBuildPolicy:
     Description: Setting IAM policy for service role for CodeBuild
@@ -164,9 +163,8 @@ Resources:
     Type: AWS::IAM::Policy
 
   CodeBuildProject:
-    Type: AWS::CodeBuild::Project
     DependsOn:
-      - CodeBuildPolicy
+    - CodeBuildPolicy
     Properties:
       Artifacts:
         Location: !Ref 'ArtifactsBucket'
@@ -197,10 +195,10 @@ Resources:
             - '.amazonaws.com/v1/repos/'
             - !Ref 'CodeCommitRepoName'
         BuildSpec: 'buildspecs/build-with-cache.yml'
-    
+    Type: AWS::CodeBuild::Project
+
   CodeBuildRole:
     Description: Creating service role in IAM for AWS CodeBuild
-    Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
         Statement:
@@ -213,10 +211,10 @@ Resources:
         - '-'
         - - !Ref 'AWS::StackName'
           - CodeBuild
+    Type: AWS::IAM::Role
 
   CodePipelineTrustRole:
     Description: Creating service role in IAM for AWS CodePipeline
-    Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
         Statement:
@@ -336,7 +334,9 @@ Resources:
             - iam:PassRole
             Effect: Allow
             Resource:
-            - !GetAtt CloudFormationTrustRole.Arn
+            - !GetAtt
+              - CloudFormationTrustRole
+              - Arn
         PolicyName: !Join
           - '-'
           - - !Ref 'AWS::StackName'
@@ -345,286 +345,288 @@ Resources:
         - '-'
         - - !Ref 'AWS::StackName'
           - CodePipeline
-
+    Type: AWS::IAM::Role
 
   ReleasePipeline:
     DependsOn:
-      # CodePipeline IAM Role
-      - CodePipelineTrustRole
-      # Build outputs
-      - ArtifactsBucket
-      # Code Build
-      - CodeBuildProject
-      # CloudFormation IAM Role for things like Change Sets
-      - CloudFormationTrustRole
-    Description: Creates a pipeline with a Source, Build, and Release Stage
-    Type: AWS::CodePipeline::Pipeline
+    - CodePipelineTrustRole
+    - ArtifactsBucket
+    - CodeBuildProject
+    - CloudFormationTrustRole
+    Description: Creating a deployment pipeline for your project in AWS CodePipeline
     Properties:
-      Name: !Join
-        - '-'
-        - - !Ref 'AWS::StackName'
-          - codepipeline
       ArtifactStore:
-        Location: !Ref ArtifactsBucket
+        Location: !Ref 'ArtifactsBucket'
         Type: S3
-      RoleArn: !GetAtt CodePipelineTrustRole.Arn
+      Name: !Ref 'AWS::StackName'
+      RoleArn: !GetAtt
+      - CodePipelineTrustRole
+      - Arn
       Stages:
-        - Name: Source
-          Actions:
-            - 
-              # Get the source code
-              Name: SourceAction
-              ActionTypeId:
-                Category: Source
-                Owner: AWS
-                Version: 1
-                Provider: S3
-              Configuration:
-                BranchName: master
-                PollForSourceChanges: false
-                RepositoryName: !Ref CodeCommitRepoName
-              OutputArtifacts:
-                -
-                  Name: !Join
-                    - '-'
-                    - - !Ref 'AWS::StackName'
-                      - SourceArtifact              
-              RunOrder: 1
-        - Name: Build
-          Actions:
-            - 
-              Name: BuildAction
-              ActionTypeId:
-                Category: Build
-                Owner: AWS
-                Provider: CodeBuild
-                Version: 1
-              Configuration:
-                ProjectName: !Ref 'AWS::StackName'
-              InputArtifacts:
-                - 
-                  Name: !Join
-                    - '-'
-                    - - !Ref 'AWS::StackName'
-                      - SourceArtifact
-              OutputArtifacts:
-                - 
-                  Name: !Join
-                    - '-'
-                    - - !Ref 'AWS::StackName'
-                      - BuildArtifact
-                  RunOrder: 1
-        - Name: Shared_Resources
-          Actions:
-            - Name: Shared_Resources_Action
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Provider: CloudFormation
-                Version: 1
-              Configuration:
-                ActionMode: CHANGE_SET_REPLACE
-                Capabilities: CAPABILITY_IAM
-                # { "DeploymentBucket: ArtifactBucket" }
-                ParameterOverrides: !Join
-                  - ''
-                  - - '{"DeploymentBucket":"'
-                    - !Ref 'ArtifactBucket'
-                    - '"}"'
-                RoleArn: !GetAtt CloudFormationTrustRole.Arn
-                StackName: !Join
-                  - ''
-                  - - !Ref 'AWS::StackName'
-                    - 'shared-resources'
-                Capabilities: CAPABILITY_IAM
-                ChangeSetName: shared-resources-changeset
-                TemplatePath: !Join
-                  - ''
-                  - - !Ref 'AWS::StackName'
-                    - BuildArtifact
-                    - ::cloudformation/shared-resources.yml
-              InputArtifacts:
-                -
-                  Name: !Join
-                    - '-'
-                      - - !Ref 'AWS::StackName'
-                      - BuildArtifact
-              OutputArtifacts: []
-              RunOrder: 1
-            - Name: ExecuteChangeSet
-              ActionTypeId:
-              Category: Deploy
-              Owner: AWS
-              Provider: CloudFormation
-              Version: 1
-              Configuration:
-                ActionMode: CHANGE_SET_EXECUTE
-                ChangeSetName: shared-resources-changeset
-                StackName: !Join
-                  - '-'
-                  - - !Ref 'AWS::StackName'
-                    - shared-resources
-                InputArtifacts: []
-                OutputArtifacts: []
-                RunOrder: 2
-        - Name: Test_Stack
-          Actions:
-          - ActionTypeId:
-              Category: Deploy
-              Owner: AWS
-              Provider: CloudFormation
-              Version: 1
-            Configuration:
-              ActionMode: CHANGE_SET_REPLACE
-              Capabilities: CAPABILITY_IAM
-              ChangeSetName: test-stack-changeset
-              ParameterOverrides: !Join
-              - ''
-              - - '{"SharedResourceStack":"'
-                - !Join
-                  - '-'
-                  -  - !Ref 'AWS::StackName'
-                     - shared-resources
-                - '", "Stage":"Test"}'
-              RoleArn: !GetAtt CloudFormationTrustRole.Arn
-              StackName: !Join
-              - '-'
-              -  - !Ref 'AWS::StackName'
-                 - test-stack
-              TemplatePath: !Join
-              - ''
-              - - !Ref 'AWS::StackName'
-                - -BuildArtifact
-                - ::cloudformation/application.yml
-            InputArtifacts:
-            - Name: !Join
-              - '-'
-              - - !Ref 'AWS::StackName'
-                - BuildArtifact
-            OutputArtifacts: []
-            Name: GenerateChangeSet
-            RunOrder: 1
-          - ActionTypeId:
-              Category: Deploy
-              Owner: AWS
-              Provider: CloudFormation
-              Version: 1
-            Configuration:
-              ActionMode: CHANGE_SET_EXECUTE
-              ChangeSetName: test-stack-changeset
-              StackName: !Join
-              - '-'
-              -  - !Ref 'AWS::StackName'
-                 - test-stack
-            InputArtifacts: []
-            OutputArtifacts: []
-            Name: ExecuteChangeSet
-            RunOrder: 2
-          - ActionTypeId:
-              Category: Deploy
-              Owner: AWS
-              Provider: CodeDeploy
-              Version: 1
-            Configuration:
-              ApplicationName: !Join
-                - '-'
-                -  - !Ref 'AWS::StackName'
-                   - shared-resources
-              DeploymentGroupName: !Join
-                - '-'
-                - - !Ref 'AWS::StackName'
-                  - test-stack
-                  - DeploymentGroup
-            InputArtifacts:
-            - Name: !Join
+      - Name: Source
+        Actions:
+        - ActionTypeId:
+            Category: Source
+            Owner: AWS
+            Provider: CodeCommit
+            Version: 1
+          Configuration:
+            BranchName: master
+            PollForSourceChanges: false
+            RepositoryName: !Ref CodeCommitRepoName
+          InputArtifacts: [
+            ]
+          Name: ApplicationSource
+          OutputArtifacts:
+          - Name: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - SourceArtifact
+          RunOrder: 1
+      - Name: Build
+        Actions:
+        - ActionTypeId:
+            Category: Build
+            Owner: AWS
+            Provider: CodeBuild
+            Version: 1
+          Configuration:
+            ProjectName: !Ref 'AWS::StackName'
+          InputArtifacts:
+          - Name: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - SourceArtifact
+          Name: Build
+          OutputArtifacts:
+          - Name: !Join
             - '-'
             - - !Ref 'AWS::StackName'
               - BuildArtifact
-            OutputArtifacts: []
-            Name: Deploy
-            RunOrder: 3
-        - Name: Prod_Stack
-          Actions:
-          - ActionTypeId:
-              Category: Deploy
-              Owner: AWS
-              Provider: CloudFormation
-              Version: 1
-            Configuration:
-              ActionMode: CHANGE_SET_REPLACE
-              Capabilities: CAPABILITY_IAM
-              ChangeSetName: prod-stack-changeset
-              ParameterOverrides: !Join
-              - ''
-              - - '{"SharedResourceStack":"'
-                - !Join
-                  - '-'
-                  -  - !Ref 'AWS::StackName'
-                     - shared-resources
-                - '", "Stage":"Prod"}'
-              RoleArn: !GetAtt
-              - CloudFormationTrustRole
-              - Arn
-              StackName: !Join
-              - '-'
-              -  - !Ref 'AWS::StackName'
-                 - prod-stack
-              TemplatePath: !Join
-              - ''
-              - - !Ref 'AWS::StackName'
-                - -BuildArtifact
-                - ::cloudformation/application.yml
-            InputArtifacts:
-            - Name: !Join
-              - '-'
-              - - !Ref 'AWS::StackName'
-                - BuildArtifact
-            OutputArtifacts: []
-            Name: GenerateChangeSet
-            RunOrder: 1
-          - ActionTypeId:
-              Category: Deploy
-              Owner: AWS
-              Provider: CloudFormation
-              Version: 1
-            Configuration:
-              ActionMode: CHANGE_SET_EXECUTE
-              ChangeSetName: prod-stack-changeset
-              StackName: !Join
-              - '-'
-              -  - !Ref 'AWS::StackName'
-                 - prod-stack
-            InputArtifacts: []
-            OutputArtifacts: []
-            Name: ExecuteChangeSet
-            RunOrder: 2
-          - ActionTypeId:
-              Category: Deploy
-              Owner: AWS
-              Provider: CodeDeploy
-              Version: 1
-            Configuration:
-              ApplicationName: !Join
+          RunOrder: 1
+      - Name: Shared_Resources
+        Actions:
+        - ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CloudFormation
+            Version: 1
+          Configuration:
+            ActionMode: CHANGE_SET_REPLACE
+            Capabilities: CAPABILITY_IAM
+            ChangeSetName: shared-resources-changeset
+            ParameterOverrides: !Join
+            - ''
+            - - '{"DeploymentBucket":"'
+              - !Ref 'ArtifactsBucket'
+              - '"}'
+            RoleArn: !GetAtt
+            - CloudFormationTrustRole
+            - Arn
+            StackName: !Join
+            - '-'
+            -  - !Ref 'AWS::StackName'
+               - shared-resources
+            TemplatePath: !Join
+            - ''
+            - - !Ref 'AWS::StackName'
+              - -BuildArtifact
+              - ::cloudformation/shared-resources.yml
+          InputArtifacts:
+          - Name: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - BuildArtifact
+          Name: GenerateChangeSet
+          OutputArtifacts: [
+            ]
+          RunOrder: 1
+        - ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CloudFormation
+            Version: 1
+          Configuration:
+            ActionMode: CHANGE_SET_EXECUTE
+            ChangeSetName: shared-resources-changeset
+            StackName: !Join
+            - '-'
+            -  - !Ref 'AWS::StackName'
+               - shared-resources
+          InputArtifacts: [
+            ]
+          Name: ExecuteChangeSet
+          OutputArtifacts: [
+            ]
+          RunOrder: 2
+      - Name: Test_Stack
+        Actions:
+        - ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CloudFormation
+            Version: 1
+          Configuration:
+            ActionMode: CHANGE_SET_REPLACE
+            Capabilities: CAPABILITY_IAM
+            ChangeSetName: test-stack-changeset
+            ParameterOverrides: !Join
+            - ''
+            - - '{"SharedResourceStack":"'
+              - !Join
                 - '-'
                 -  - !Ref 'AWS::StackName'
                    - shared-resources
-              DeploymentGroupName: !Join
-                - '-'
-                - - !Ref 'AWS::StackName'
-                  - prod-stack
-                  - DeploymentGroup
-            InputArtifacts:
-            - Name: !Join
+              - '", "Stage":"Test"}'
+            RoleArn: !GetAtt
+            - CloudFormationTrustRole
+            - Arn
+            StackName: !Join
+            - '-'
+            -  - !Ref 'AWS::StackName'
+               - test-stack
+            TemplatePath: !Join
+            - ''
+            - - !Ref 'AWS::StackName'
+              - -BuildArtifact
+              - ::cloudformation/application.yml
+          InputArtifacts:
+          - Name: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - BuildArtifact
+          Name: GenerateChangeSet
+          OutputArtifacts: [
+            ]
+          RunOrder: 1
+        - ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CloudFormation
+            Version: 1
+          Configuration:
+            ActionMode: CHANGE_SET_EXECUTE
+            ChangeSetName: test-stack-changeset
+            StackName: !Join
+            - '-'
+            -  - !Ref 'AWS::StackName'
+               - test-stack
+          InputArtifacts: [
+            ]
+          Name: ExecuteChangeSet
+          OutputArtifacts: [
+            ]
+          RunOrder: 2
+        - ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CodeDeploy
+            Version: 1
+          Configuration:
+            ApplicationName: !Join
+              - '-'
+              -  - !Ref 'AWS::StackName'
+                 - shared-resources
+            DeploymentGroupName: !Join
               - '-'
               - - !Ref 'AWS::StackName'
-                - BuildArtifact
-            OutputArtifacts: []
-            Name: Deploy
-            RunOrder: 3
-  
+                - test-stack
+                - DeploymentGroup
+          InputArtifacts:
+          - Name: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - BuildArtifact
+          Name: Deploy
+          OutputArtifacts: [
+            ]
+          RunOrder: 3
+      - Name: Prod_Stack
+        Actions:
+        - ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CloudFormation
+            Version: 1
+          Configuration:
+            ActionMode: CHANGE_SET_REPLACE
+            Capabilities: CAPABILITY_IAM
+            ChangeSetName: prod-stack-changeset
+            ParameterOverrides: !Join
+            - ''
+            - - '{"SharedResourceStack":"'
+              - !Join
+                - '-'
+                -  - !Ref 'AWS::StackName'
+                   - shared-resources
+              - '", "Stage":"Prod"}'
+            RoleArn: !GetAtt
+            - CloudFormationTrustRole
+            - Arn
+            StackName: !Join
+            - '-'
+            -  - !Ref 'AWS::StackName'
+               - prod-stack
+            TemplatePath: !Join
+            - ''
+            - - !Ref 'AWS::StackName'
+              - -BuildArtifact
+              - ::cloudformation/application.yml
+          InputArtifacts:
+          - Name: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - BuildArtifact
+          Name: GenerateChangeSet
+          OutputArtifacts: [
+            ]
+          RunOrder: 1
+        - ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CloudFormation
+            Version: 1
+          Configuration:
+            ActionMode: CHANGE_SET_EXECUTE
+            ChangeSetName: prod-stack-changeset
+            StackName: !Join
+            - '-'
+            -  - !Ref 'AWS::StackName'
+               - prod-stack
+          InputArtifacts: [
+            ]
+          Name: ExecuteChangeSet
+          OutputArtifacts: [
+            ]
+          RunOrder: 2
+        - ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CodeDeploy
+            Version: 1
+          Configuration:
+            ApplicationName: !Join
+              - '-'
+              -  - !Ref 'AWS::StackName'
+                 - shared-resources
+            DeploymentGroupName: !Join
+              - '-'
+              - - !Ref 'AWS::StackName'
+                - prod-stack
+                - DeploymentGroup
+          InputArtifacts:
+          - Name: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - BuildArtifact
+          Name: Deploy
+          OutputArtifacts: [
+            ]
+          RunOrder: 3
+    Type: AWS::CodePipeline::Pipeline
+
   ArtifactBucketPolicy:
     Description: Setting Amazon S3 bucket policy for AWS CodePipeline access
-    Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref 'ArtifactsBucket'
       PolicyDocument:
@@ -683,13 +685,11 @@ Resources:
               - /*
           Sid: WhitelistedPut
         Version: 2012-10-17
-    
+    Type: AWS::S3::BucketPolicy
 
   ArtifactsBucket:
-    # Retain the artifacts bucket on stack deletion
-    DeletionPolicy: Retain
+    DeletionPolicy: Delete
     Description: Creating Amazon S3 bucket for AWS CodePipeline and CodeBuild artifacts
-    Type: AWS::S3::Bucket
     Properties:
       Tags:
       - Key: Name
@@ -699,13 +699,11 @@ Resources:
           - ArtifactsBucket
       VersioningConfiguration:
         Status: Enabled
-    
+    Type: AWS::S3::Bucket
 
   CacheBucket:
-    # Delete the cache bucket if the stack is deleted
     DeletionPolicy: Delete
     Description: Creating Amazon S3 bucket for CodeBuild caching
-    Type: AWS::S3::Bucket
     Properties:
       Tags:
       - Key: Name
@@ -717,12 +715,11 @@ Resources:
         Rules:
           - ExpirationInDays: 30
             Status: Enabled
-    
+    Type: AWS::S3::Bucket
 
   SourceEvent:
-    Description: Rule for Amazon CloudWatch Events to detect changes to the source repository and trigger pipeline execution
-    Type: AWS::Events::Rule
     Properties:
+      Description: Rule for Amazon CloudWatch Events to detect changes to the source repository and trigger pipeline execution
       EventPattern:
         detail:
           event:
@@ -759,10 +756,10 @@ Resources:
           - !Ref 'AWS::StackName'
         Id: ProjectPipelineTarget
         RoleArn: !GetAtt 'SourceEventRole.Arn'
-    
+    Type: AWS::Events::Rule
+
   SourceEventRole:
     Description: IAM role to allow Amazon CloudWatch Events to trigger AWS CodePipeline execution
-    Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
         Statement:
@@ -774,11 +771,11 @@ Resources:
           Sid: 1
       Policies:
       - PolicyDocument:
-        Statement:
-        - Action:
-          - codepipeline:StartPipelineExecution
-          Effect: Allow
-          Resource:
+          Statement:
+          - Action:
+            - codepipeline:StartPipelineExecution
+            Effect: Allow
+            Resource:
             - !Join
               - ':'
               - - arn
@@ -795,3 +792,4 @@ Resources:
         - '-'
         - - !Ref 'AWS::StackName'
           - CloudWatchEventRule
+    Type: AWS::IAM::Role

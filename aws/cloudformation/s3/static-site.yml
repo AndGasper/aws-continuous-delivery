@@ -1,0 +1,43 @@
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A publicly hosted website with CORS configuration
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      CorsConfiguration:
+        CorsRules:
+        - AllowedHeaders: ['*']
+          AllowedMethods: [GET]
+          AllowedOrigins: ['*']
+          ExposedHeaders: [Date]
+          Id: myCORSRuleId1
+          MaxAge: '3600'
+        - AllowedHeaders: [x-amz-*]
+          AllowedMethods: [DELETE]
+          AllowedOrigins: ['http://www.example1.com', 'http://www.example2.com']
+          ExposedHeaders: [Connection, Server, Date]
+          Id: myCORSRuleId2
+          MaxAge: '1800'
+      BucketName: public-bucket
+      MetricsConfigurations: 
+        - Id: EntireBucket
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+        RoutingRules:
+        - RoutingRuleCondition:
+            HttpErrorCodeReturnedEquals: '404'
+            KeyPrefixEquals: out1/
+          RedirectRule:
+            HostName: ec2-11-22-333-44.compute-1.amazonaws.com
+            ReplaceKeyPrefixWith: report-404/
+    DeletionPolicy: Retain
+Outputs:
+  WebsiteURL:
+    Value: !GetAtt [S3Bucket, WebsiteURL]
+    Description: URL for website hosted on S3
+  S3BucketSecureURL:
+    Value: !Join ['', ['https://', !GetAtt [S3Bucket, DomainName]]]
+    Description: Name of S3 bucket to hold website content
